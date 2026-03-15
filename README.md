@@ -2,161 +2,168 @@ import tkinter as tk
 import pyaudio
 import numpy as np
 import threading
+import random
+import colorsys
 
-# --- НАЛАШТУВАННЯ ЗВУКУ ---
+# --- НАЛАШТУВАННЯ ---
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
-THRESHOLD = 2000 
+THRESHOLD = 2000
 
-class GeometryDashLevels:
+class GeometryDashEffects:
     def __init__(self, root):
         self.root = root
-        self.root.title("Voice Dash: Level Selector")
-        self.root.geometry("800x550")
-        self.root.resizable(False, False)
-
-        self.canvas = tk.Canvas(root, width=800, height=550, bg="#002266", highlightthickness=0)
+        self.root.title("GD: Neon Effects Edition")
+        self.canvas = tk.Canvas(root, width=800, height=450, bg="#000022", highlightthickness=0)
         self.canvas.pack()
 
-        # Звук
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-
-        self.game_active = False
-        self.running = True
-        self.obstacle_speed = 12
-        self.current_level_name = ""
         
-        # Список кнопок для видалення
-        self.menu_buttons = []
+        self.root.bind("<space>", lambda e: self.jump())
+        
+        self.hue = 0.6  # Початковий колір (синій)
+        self.game_active = False
+        self.show_menu()
 
-        threading.Thread(target=self.audio_listener, daemon=True).start()
-        self.show_main_menu()
-
-    def clear_menu_buttons(self):
-        """Видаляє всі віджети кнопок з екрана"""
-        for btn in self.menu_buttons:
-            btn.destroy()
-        self.menu_buttons = []
-
-    def show_main_menu(self):
-        """Головне меню з вибором рівнів"""
+    def show_menu(self):
         self.canvas.delete("all")
-        self.game_active = False
-        self.clear_menu_buttons()
-        
-        # Фон
-        self.canvas.create_rectangle(0, 0, 800, 550, fill="#001a44")
-        self.canvas.create_text(400, 80, text="ОБЕРИ РІВЕНЬ", font=("Courier", 50, "bold"), fill="#00ff88")
+        self.canvas.create_text(400, 200, text="NEON DASH", font=("Courier", 60, "bold"), fill="#00ff88")
+        btn = tk.Button(self.root, text="START INFINITE", command=self.start_game, font=("Arial", 20), bg="#00ff88")
+        self.canvas.create_window(400, 300, window=btn)
 
-        # --- КНОПКИ РІВНІВ ---
-        levels = [
-            ("ЛЕГКО (Easy)", 10, "#00ff88", 180),
-            ("НОРМАЛЬНО (Normal)", 15, "#ffff00", 260),
-            ("СКЛАДНО (Hard)", 22, "#ffaa00", 340),
-            ("ДЕМОН (Extreme)", 30, "#ff3333", 420)
-        ]
-
-        for text, speed, color, y in levels:
-            btn = tk.Button(
-                self.root, text=text, 
-                command=lambda s=speed, n=text: self.start_level(s, n),
-                font=("Courier", 18, "bold"), bg=color, width=25, cursor="hand2"
-            )
-            self.menu_buttons.append(btn)
-            self.canvas.create_window(400, y, window=btn)
-
-        self.canvas.create_text(400, 500, text="Використовуй голос для стрибка!", font=("Arial", 12), fill="white")
-
-    def start_level(self, speed, name):
-        """Запуск гри з обраною швидкістю"""
-        self.obstacle_speed = speed
-        self.current_level_name = name
-        self.clear_menu_buttons()
-        self.setup_game()
-
-    def setup_game(self):
+    def start_game(self):
         self.canvas.delete("all")
         self.game_active = True
         self.score = 0
+        self.speed = 10
+        self.spawn_timer = 0
         
-        # Ігровий світ
-        self.canvas.create_rectangle(0, 0, 800, 550, fill="#0055ff") # Небо
-        self.canvas.create_rectangle(0, 340, 800, 550, fill="#002266", outline="") # Земля
+        # Гравець
+        self.player_id = self.canvas.create_rectangle(100, 304, 136, 340, fill="#00ff88", outline="white", width=2)
         
-        # Тексти
-        self.score_label = self.canvas.create_text(400, 50, text="SCORE: 0", font=("Courier", 35, "bold"), fill="white")
-        self.canvas.create_text(400, 90, text=f"MODE: {self.current_level_name}", font=("Arial", 12, "bold"), fill="#00ff88")
-
-        # Об'єкти
-        self.player_id = self.canvas.create_rectangle(100, 300, 140, 340, fill="#00ff88", outline="white", width=2)
-        self.spike_id = self.canvas.create_polygon(800, 340, 820, 300, 840, 340, fill="black", outline="white", width=2)
-
+        # Об'єкти та ефекти
+        self.game_objects = []
+        self.particles = []
         self.y_velocity = 0
-        self.gravity = 1.4
+        self.gravity = 1.5
         self.is_jumping = False
+
+        threading.Thread(target=self.audio_listener, daemon=True).start()
         self.update()
 
     def audio_listener(self):
-        while self.running:
+        while self.game_active:
             try:
                 data = self.stream.read(CHUNK, exception_on_overflow=False)
-                peak = np.max(np.abs(np.frombuffer(data, dtype=np.int16)))
-                if self.game_active and peak > THRESHOLD and not self.is_jumping:
-                    self.y_velocity = -18
-                    self.is_jumping = True
+                if np.max(np.abs(np.frombuffer(data, dtype=np.int16))) > THRESHOLD:
+                    self.jump()
             except: pass
+
+    def jump(self):
+        if not self.is_jumping:
+            self.y_velocity = -19
+            self.is_jumping = True
+            self.create_particles(118, 340, "#00ff88") # Іскри при відштовхуванні
+
+    def create_particles(self, x, y, color):
+        """Ефект часток (іскри)"""
+        for _ in range(5):
+            p = self.canvas.create_oval(x, y, x+4, y+4, fill=color, outline="")
+            vx = random.uniform(-5, 2)
+            vy = random.uniform(-10, -2)
+            self.particles.append([p, vx, vy, 10]) # [id, speed_x, speed_y, life]
+
+    def update_effects(self):
+        """Плавна зміна фону та часток"""
+        # 1. Зміна кольору неба
+        self.hue += 0.001
+        if self.hue > 1: self.hue = 0
+        rgb = colorsys.hsv_to_rgb(self.hue, 0.7, 0.3)
+        color = '#%02x%02x%02x' % (int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255))
+        self.canvas.config(bg=color)
+
+        # 2. Оновлення часток
+        for p_data in self.particles[:]:
+            p_id, vx, vy, life = p_data
+            self.canvas.move(p_id, vx, vy)
+            p_data[2] += 0.5 # гравітація для часток
+            p_data[3] -= 1   # життя часток
+            if p_data[3] <= 0:
+                self.canvas.delete(p_id)
+                self.particles.remove(p_data)
+
+    def spawn_logic(self):
+        """Динамічна генерація перешкод"""
+        self.spawn_timer += 1
+        if self.spawn_timer > random.randint(30, 70):
+            x = 850
+            choice = random.random()
+            if choice < 0.4: # Шип
+                o = self.canvas.create_polygon(x, 340, x+20, 300, x+40, 340, fill="black", outline="#ff0044", width=2, tags="spike")
+            elif choice < 0.7: # Подвійний шип
+                o = self.canvas.create_polygon(x, 340, x+20, 300, x+40, 340, x+40, 340, x+60, 300, x+80, 340, fill="black", outline="#ff0044", tags="spike")
+            else: # Платформа
+                o = self.canvas.create_rectangle(x, 240, x+80, 270, fill="#333", outline="white", width=2, tags="block")
+            
+            self.game_objects.append(o)
+            self.spawn_timer = 0
 
     def update(self):
         if not self.game_active: return
 
-        # Фізика гравця
-        self.canvas.move(self.player_id, 0, self.y_velocity)
-        p_pos = self.canvas.coords(self.player_id)
+        self.update_effects()
+        self.spawn_logic()
 
-        if p_pos[3] < 340:
-            self.y_velocity += self.gravity
-        else:
+        # Фізика гравця
+        self.y_velocity += self.gravity
+        self.canvas.move(self.player_id, 0, self.y_velocity)
+        p = self.canvas.coords(self.player_id)
+
+        if p[3] >= 340:
+            if self.is_jumping: # Тільки-но приземлився
+                self.create_particles(p[0], 340, "white")
+            self.canvas.move(self.player_id, 0, 340 - p[3])
             self.y_velocity = 0
             self.is_jumping = False
-            self.canvas.coords(self.player_id, 100, 300, 140, 340)
 
-        # Рух шипа
-        self.canvas.move(self.spike_id, -self.obstacle_speed, 0)
-        s_pos = self.canvas.coords(self.spike_id)
+        # Рух та колізії об'єктів
+        for obj in self.game_objects[:]:
+            self.canvas.move(obj, -self.speed, 0)
+            o_pos = self.canvas.coords(obj)
+            tag = self.canvas.gettags(obj)[0]
 
-        if s_pos[0] < -50:
-            self.canvas.coords(self.spike_id, 800, 340, 820, 300, 840, 340)
-            self.score += 1
-            self.canvas.itemconfig(self.score_label, text=f"SCORE: {self.score}")
+            if o_pos[0] < -100:
+                self.canvas.delete(obj)
+                self.game_objects.remove(obj)
+                self.score += 1
+                continue
 
-        # Зіткнення
-        if self.check_collision(p_pos, s_pos):
-            self.game_over()
-            return
+            if self.check_collision(p, o_pos):
+                if tag == "spike": self.game_over()
+                elif tag == "block":
+                    if self.y_velocity > 0 and p[3] <= o_pos[1] + 15:
+                        self.canvas.move(self.player_id, 0, o_pos[1] - p[3])
+                        self.y_velocity = 0
+                        self.is_jumping = False
+                    else: self.game_over()
 
         self.root.after(20, self.update)
 
-    def check_collision(self, p, s):
-        pad = 8
-        return p[2]-pad > s[0] and p[0]+pad < s[4] and p[3]-pad > s[3]
+    def check_collision(self, p, o):
+        return p[2]-5 > o[0] and p[0]+5 < (o[2] if len(o)==4 else o[4]) and \
+               p[3]-5 > o[1] and p[1]+5 < (o[3] if len(o)==4 else o[5])
 
     def game_over(self):
         self.game_active = False
-        self.canvas.create_rectangle(0, 0, 800, 550, fill="black", stipple="gray50")
-        self.canvas.create_text(400, 180, text="КРАШ!", font=("Courier", 60, "bold"), fill="#ff4444")
-        
-        # Кнопки після програшу
-        btn_restart = tk.Button(self.root, text="СПРОБУВАТИ ЗНОВУ", command=self.setup_game, font=("Arial", 14, "bold"), bg="white", width=20)
-        btn_menu = tk.Button(self.root, text="В МЕНЮ", command=self.show_main_menu, font=("Arial", 14), bg="#cccccc", width=20)
-        
-        self.menu_buttons.extend([btn_restart, btn_menu])
-        self.canvas.create_window(400, 280, window=btn_restart)
-        self.canvas.create_window(400, 340, window=btn_menu)
+        self.canvas.create_text(400, 200, text="GAME OVER", font=("Courier", 50, "bold"), fill="#ff0044")
+        self.root.after(2000, self.show_menu)
 
 if __name__ == "__main__":
     root = tk.Tk()
+    app = GeometryDashEffects(root)
+    root.mainloop()
     game = GeometryDashLevels(root)
     root.mainloop()
